@@ -1,23 +1,25 @@
 package amazed.solver;
 
+
 import amazed.maze.Maze;
 
 import java.util.List;
 import java.util.*;
 import java.util.concurrent.ConcurrentSkipListSet;
+import java.util.concurrent.locks.*;
 import java.util.concurrent.*;
 
 /**
- * <code>ForkJoinSolver</code> implements a solver for
+ * <code>ForkJoinSolver2</code> implements a solver for
  * <code>Maze</code> objects using a fork/join multi-thread
  * depth-first search.
  * <p>
- * Instances of <code>ForkJoinSolver</code> should be run by a
+ * Instances of <code>ForkJoinSolver22</code> should be run by a
  * <code>ForkJoinPool</code> object.
  */
 
 
-public class ForkJoinSolver
+public class ForkJoinSolver2
     extends SequentialSolver
 {
   private static ConcurrentSkipListSet<Integer> concurrentVisited=new ConcurrentSkipListSet<Integer>();
@@ -38,7 +40,7 @@ public class ForkJoinSolver
      *
      * @param maze   the maze to be searched
      */
-    public ForkJoinSolver(Maze maze)
+    public ForkJoinSolver2(Maze maze)
     {
         super(maze);
     }
@@ -54,7 +56,7 @@ public class ForkJoinSolver
      *                    <code>forkAfter &lt;= 0</code> the solver never
      *                    forks new tasks
      */
-    public ForkJoinSolver(Maze maze, int forkAfter)
+    public ForkJoinSolver2(Maze maze, int forkAfter)
     {
         super(maze);
         if(!startIsSet){
@@ -84,12 +86,19 @@ public class ForkJoinSolver
 
     private List<Integer> parallelSearch()
     {
+      ArrayList<ForkJoinSolver2> children= new ArrayList<ForkJoinSolver2>();
       int player=-1;
       // start with start node
       frontier.push(start);
       // as long as not all nodes have been processed
       while (!frontier.empty()) {
           if(foundGoal){
+            for(ForkJoinSolver2 child: children){
+                List<Integer> path = child.join();
+                if(path != null){
+                  return path;
+                }
+              }
             return null;
           }
           // get the new node to process
@@ -108,6 +117,12 @@ public class ForkJoinSolver
                 }
                 // search finished: reconstruct and return path
                 foundGoal=true;
+                for(ForkJoinSolver2 child: children){
+                    List<Integer> path = child.join();
+                    if(path != null){
+                      return path;
+                    }
+                  }
                 return pathFromTo(concurrentStart, current);
             }
               // move player to current node
@@ -120,32 +135,30 @@ public class ForkJoinSolver
               }
               // for every node nb adjacent to current
               if(stepsSinceFork>=forkAfter){
-                int nrOfChildren=maze.neighbors(current).size();
-                ForkJoinSolver[] forkedChildren = new ForkJoinSolver[nrOfChildren];
-                int child=0;
+                boolean hasWork=false;
                 for (int nb: maze.neighbors(current)) {
                   // add nb to the nodes to be processed
 
                   // if nb has not been already visited,
                   // nb can be reached from current (i.e., current is nb's predecessor)
                   if (!concurrentVisited.contains(nb)){
-                        forkedChildren[child]=new ForkJoinSolver(maze, forkAfter);
-                        forkedChildren[child].start=nb;
+                    if(!hasWork){
+                      frontier.push(nb);
+                      concurrentPredecessor.put(nb, current);
+                      hasWork=true;
+                    }
+                    else{
+                        ForkJoinSolver2 child=new ForkJoinSolver2(maze, forkAfter);
+                        child.start=nb;
                         concurrentPredecessor.put(nb, current);
-                        forkedChildren[child].fork();
-                      child++;
+                        children.add(child);
+                        child.fork();
                     }
                     }
-                    for(int i=0; i<nrOfChildren; i++){
-                      if(forkedChildren[i] != null){
-                        List<Integer> path = forkedChildren[i].join();
-                        if(path != null){
-                          return path;
-                        }
-                      }
                     }
                     stepsSinceFork=0;
             }
+            else{
             for (int nb: maze.neighbors(current)) {
                 // add nb to the nodes to be processed
                 frontier.push(nb);
@@ -155,8 +168,15 @@ public class ForkJoinSolver
                     concurrentPredecessor.put(nb, current);
             }
             stepsSinceFork++;
+            }
           }
       }
+      for(ForkJoinSolver2 child: children){
+          List<Integer> path = child.join();
+          if(path != null){
+            return path;
+          }
+        }
       // all nodes explored, no goal found
       return null;
     }

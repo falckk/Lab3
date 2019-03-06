@@ -130,6 +130,7 @@ public class SequentialSolver
                 // move player to goal
                 maze.move(player, current);
                 // search finished: reconstruct and return path
+                System.out.println(predecessor);
                 return pathFromTo(start, current);
             }
             // if current node has not been visited yet
@@ -170,6 +171,7 @@ public class SequentialSolver
         List<Integer> path = new LinkedList<>();
         Integer current = to;
         while (current != from) {
+          System.out.println(current);
             path.add(current);
             current = predecessor.get(current);
             if (current == null)

@@ -1,4 +1,5 @@
 package amazed.maze;
+import  amazed.solver.*;
 
 import java.awt.EventQueue;
 import java.util.List;
@@ -53,7 +54,7 @@ public class Amazed
      *                         <code>animationDelay &lt; 0</code> then
      *                         there is no graphical display at all
      */
-    public Amazed(String map, boolean sequentialSolver, int forkAfter, int animationDelay)
+    public Amazed(String map, int sequentialSolver, int forkAfter, int animationDelay)
     {
         maze = new Maze(map);
         if (animationDelay >= 0) {
@@ -66,8 +67,11 @@ public class Amazed
             });
         }
         maze.setDelay(animationDelay);
-        if (sequentialSolver)
+        if (sequentialSolver==0)
             solver = new SequentialSolver(maze);
+        else if(sequentialSolver==2) {
+        	solver = new ForkJoinSolver2(maze, forkAfter);
+        }
         else
             solver = new ForkJoinSolver(maze, forkAfter);
     }

@@ -29,7 +29,6 @@ public class ForkJoinSolver
   private static int concurrentStart=-1;
   private static boolean startIsSet=false;
   private static boolean foundGoal=false;
-  private boolean hasPlacedPlayer=false;
   private int stepsSinceFork;
 
     /**
@@ -84,7 +83,8 @@ public class ForkJoinSolver
 
     private List<Integer> parallelSearch()
     {
-      int player=-1;
+      // one player active on the maze at start
+      int player = maze.newPlayer(start);
       // start with start node
       frontier.push(start);
       // as long as not all nodes have been processed
@@ -94,30 +94,20 @@ public class ForkJoinSolver
           }
           // get the new node to process
           int current = frontier.pop();
+          // if current node has a goal
+          if (maze.hasGoal(current)) {
+              // move player to goal
+              maze.move(player, current);
+              // search finished: reconstruct and return path
+              foundGoal=true;
+              return pathFromTo(concurrentStart, current);
+          }
           // if current node has not been visited yet
-          if (concurrentVisited.add(current)) {
-            // if current node has a goal
-            if (maze.hasGoal(current)) {
-                // move player to goal
-                if(!hasPlacedPlayer){
-                  player = maze.newPlayer(current);
-                  hasPlacedPlayer=true;
-                }
-                else{
-                  maze.move(player, current);
-                }
-                // search finished: reconstruct and return path
-                foundGoal=true;
-                return pathFromTo(concurrentStart, current);
-            }
+          if (!concurrentVisited.contains(current)) {
               // move player to current node
-              if(!hasPlacedPlayer){
-                player = maze.newPlayer(current);
-                hasPlacedPlayer=true;
-              }
-              else{
-                maze.move(player, current);
-              }
+              maze.move(player, current);
+              // mark node as visited
+              concurrentVisited.add(current);
               // for every node nb adjacent to current
               if(stepsSinceFork>=forkAfter){
                 int nrOfChildren=maze.neighbors(current).size();

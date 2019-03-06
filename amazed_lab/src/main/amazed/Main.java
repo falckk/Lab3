@@ -22,9 +22,10 @@ public class Main
 
     private final static String SEQUENTIAL = "sequential";
     private final static String PARALLEL = "parallel";
+    private final static String PARALLEL2 = "parallel2";
 
     private static String map;
-    private static boolean sequential = true;
+    private static int sequential = 0;
     private static int forkAfter = 0;
     private static int period = 500;
 
@@ -35,9 +36,9 @@ public class Main
             if (args.length >= 2) {
                 String solver = args[1];
                 if (solver.equals(SEQUENTIAL))
-                    sequential = true;
+                    sequential = 0;
                 else {
-                    sequential = false;
+                    sequential = 1;
                     String[] splitSolver = solver.split("-");
                     if (splitSolver.length == 2) {
                         if (splitSolver[0].equals(PARALLEL)) {
@@ -46,6 +47,13 @@ public class Main
                             } catch (NumberFormatException e) {
                                 printUsageAndExit();
                             }
+                        }else if(splitSolver[0].equals(PARALLEL2)) {
+                        	sequential = 2;
+                                try {
+                                    forkAfter = Integer.parseInt(splitSolver[1]);
+                                } catch (NumberFormatException e) {
+                                    printUsageAndExit();
+                                }
                         } else
                             printUsageAndExit();
                     } else
