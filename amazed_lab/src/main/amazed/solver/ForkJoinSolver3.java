@@ -5,17 +5,20 @@ import amazed.maze.Maze;
 import java.util.List;
 import java.util.*;
 import java.util.concurrent.ConcurrentSkipListSet;
+import java.util.concurrent.locks.*;
 import java.util.concurrent.*;
 
 /**
- * <code>ForkJoinSolver</code> implements a solver for <code>Maze</code> objects
- * using a fork/join multi-thread depth-first search.
+ * <code>ForkJoinSolver3</code> implements a solver for <code>Maze</code>
+ * objects using a fork/join multi-thread depth-first search.
  * <p>
- * Instances of <code>ForkJoinSolver</code> should be run by a
+ * Instances of <code>ForkJoinSolver32</code> should be run by a
  * <code>ForkJoinPool</code> object.
  */
 
-public class ForkJoinSolver extends SequentialSolver {
+// Do not depend on forkAfter.
+
+public class ForkJoinSolver3 extends SequentialSolver {
 	/* Remembers which squares are already visited. */
 	private static ConcurrentSkipListSet<Integer> concurrentVisited = new ConcurrentSkipListSet<Integer>();
 	/*
@@ -24,7 +27,6 @@ public class ForkJoinSolver extends SequentialSolver {
 	 * map when joining but this would severly slowdown joining since each element
 	 * might have to be added several time.
 	 */
-	/* Works like a concurrent */
 	private static ConcurrentHashMap<Integer, Integer> concurrentPredecessor = new ConcurrentHashMap<Integer, Integer>();
 	/*
 	 * concurrentStart remembers the square the original thread started on. It is
@@ -46,11 +48,6 @@ public class ForkJoinSolver extends SequentialSolver {
 	 * thread.
 	 */
 	private boolean hasPlacedPlayer = false;
-	/*
-	 * stepsSinceFork remembers how many steps there was since the last time this
-	 * thread forked.
-	 */
-	private int stepsSinceFork;
 
 	/**
 	 * Creates a solver that searches in <code>maze</code> from the start node to a
@@ -58,7 +55,7 @@ public class ForkJoinSolver extends SequentialSolver {
 	 *
 	 * @param maze the maze to be searched
 	 */
-	public ForkJoinSolver(Maze maze) {
+	public ForkJoinSolver3(Maze maze) {
 		super(maze);
 	}
 
@@ -71,14 +68,12 @@ public class ForkJoinSolver extends SequentialSolver {
 	 *                  task is forked; if <code>forkAfter &lt;= 0</code> the solver
 	 *                  never forks new tasks
 	 */
-	public ForkJoinSolver(Maze maze, int forkAfter) {
+	public ForkJoinSolver3(Maze maze, int forkAfter) {
 		super(maze);
 		if (!startIsSet) {
 			startIsSet = true;
 			concurrentStart = maze.start();
 		}
-		stepsSinceFork = 0;
-		this.forkAfter = forkAfter;
 	}
 
 	/**
@@ -96,13 +91,22 @@ public class ForkJoinSolver extends SequentialSolver {
 	}
 
 	private List<Integer> parallelSearch() {
+		// List of this threads children.
+		ArrayList<ForkJoinSolver3> children = new ArrayList<ForkJoinSolver3>();
 		int player = -1;
 		// start with start node
 		frontier.push(start);
 		// as long as not all nodes have been processed
 		while (!frontier.empty()) {
-			// Return if some other thread has found the goal.
+			// If some other thread has found a goal, join with all your children and
+			// return.
 			if (foundGoal) {
+				for (ForkJoinSolver3 child : children) {
+					List<Integer> path = child.join();
+					if (path != null) {
+						return path;
+					}
+				}
 				return null;
 			}
 			// get the new node to process
@@ -118,8 +122,15 @@ public class ForkJoinSolver extends SequentialSolver {
 					} else {
 						maze.move(player, current);
 					}
-					// search finished: reconstruct and return path
+					// search finished: join with children and return path. If none of them has a
+					// path to a goal, find the path to your goal.
 					foundGoal = true;
+					for (ForkJoinSolver3 child : children) {
+						List<Integer> path = child.join();
+						if (path != null) {
+							return path;
+						}
+					}
 					return pathFromTo(concurrentStart, current);
 				}
 				// move player to current node
@@ -129,40 +140,34 @@ public class ForkJoinSolver extends SequentialSolver {
 				} else {
 					maze.move(player, current);
 				}
-				// Fork after forkAfter steps.
-				if (stepsSinceFork >= forkAfter) {
-					// Create an array to hold the new children
-					int nrOfChildren = maze.neighbors(current).size();
-					ForkJoinSolver[] forkedChildren = new ForkJoinSolver[nrOfChildren];
-					int child = 0;
+				// If we are at an intersection we should fork.
+				if (maze.neighbors(current).size() > 2) {
+					// hasWork remembers of the parent has been given work.
+					boolean hasWork = false;
 					// for every node nb adjacent to current
 					for (int nb : maze.neighbors(current)) {
 						// if nb has not been already visited,
 						// nb can be reached from current (i.e., current is nb's predecessor)
 						if (!concurrentVisited.contains(nb)) {
-							/*
-							 * Creates a child prosses that starts at nb. Note: We put before we fork so
-							 * that the full path to a square that a thread is on is always in
-							 * concurrentPredecessor.
-							 */
-							forkedChildren[child] = new ForkJoinSolver(maze, forkAfter);
-							forkedChildren[child].start = nb;
-							concurrentPredecessor.put(nb, current);
-							forkedChildren[child].fork();
-							child++;
-						}
-					}
-					// When it has forked the parent waits to join with all its children.
-					for (int i = 0; i < nrOfChildren; i++) {
-						if (forkedChildren[i] != null) {
-							List<Integer> path = forkedChildren[i].join();
-							if (path != null) {
-								return path;
+							// If the parent does not have work, that thread is given work first.
+							if (!hasWork) {
+								frontier.push(nb);
+								concurrentPredecessor.put(nb, current);
+								hasWork = true;
+							} else {
+								// If the parent does have work, We create a child to search from this square.
+								/*
+								 * Note: We put before we fork so that the full path to a square that a thread
+								 * is on is always in concurrentPredecessor.
+								 */
+								ForkJoinSolver3 child = new ForkJoinSolver3(maze, forkAfter);
+								child.start = nb;
+								concurrentPredecessor.put(nb, current);
+								children.add(child);
+								child.fork();
 							}
 						}
 					}
-					// Reset stepsSinceFork
-					stepsSinceFork = 0;
 				} else {
 					// If we should not fork we this thread runs like in sequentialSolver.
 					for (int nb : maze.neighbors(current)) {
@@ -173,8 +178,17 @@ public class ForkJoinSolver extends SequentialSolver {
 						if (!concurrentVisited.contains(nb))
 							concurrentPredecessor.put(nb, current);
 					}
-					stepsSinceFork++;
 				}
+			}
+		}
+		/*
+		 * If the thread have searched everything in its frontier and not found a goal,
+		 * it should join with all its children to see if they have found a goal.
+		 */
+		for (ForkJoinSolver3 child : children) {
+			List<Integer> path = child.join();
+			if (path != null) {
+				return path;
 			}
 		}
 		// all nodes explored, no goal found

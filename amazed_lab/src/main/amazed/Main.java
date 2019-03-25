@@ -4,84 +4,99 @@ import java.lang.invoke.MethodHandles;
 
 import amazed.maze.Amazed;
 
+public class Main {
+	private static void printUsageAndExit() {
+		String className = MethodHandles.lookup().lookupClass().getName();
+		System.out.println("A-mazed: finds and displays paths to goal in a maze.\n" + "\n" + "usage: java " + className
+				+ " MAP [SOLVER] [PERIOD]\n" + "\n" + " MAP    filename with map file\n"
+				+ " SOLVER 'sequential' or 'parallel-N' solver, forking after N steps\n"
+				+ " PERIOD time in millisecond between steps (0: don't animate)");
+		System.exit(0);
+	}
 
-public class Main
-{
-    private static void printUsageAndExit()
-    {
-        String className = MethodHandles.lookup().lookupClass().getName();
-        System.out.println("A-mazed: finds and displays paths to goal in a maze.\n"
-                           + "\n"
-                           + "usage: java " + className + " MAP [SOLVER] [PERIOD]\n"
-                           + "\n"
-                           + " MAP    filename with map file\n"
-                           + " SOLVER 'sequential' or 'parallel-N' solver, forking after N steps\n"
-                           + " PERIOD time in millisecond between steps (0: don't animate)");
-        System.exit(0);
-    }
+	private final static String SEQUENTIAL = "sequential";
+	private final static String PARALLEL = "parallel";
+	private final static String PARALLEL2 = "parallel2";
+	private final static String PARALLEL3 = "parallel3";
+	private final static String PARALLEL4 = "parallel4";
 
-    private final static String SEQUENTIAL = "sequential";
-    private final static String PARALLEL = "parallel";
-    private final static String PARALLEL2 = "parallel2";
+	private static String map;
+	private static int sequential = 0;
+	private static int forkAfter = 0;
+	private static int period = 500;
+	private static int poolSize = 3;
 
-    private static String map;
-    private static int sequential = 0;
-    private static int forkAfter = 0;
-    private static int period = 500;
+	private static void parseArguments(String[] args) {
+		if (args.length >= 1) {
+			map = args[0];
+			if (args.length >= 2) {
+				String solver = args[1];
+				if (solver.equals(SEQUENTIAL))
+					sequential = 0;
+				else {
+					sequential = 1;
+					String[] splitSolver = solver.split("-");
+					if (splitSolver.length == 2) {
+						if (splitSolver[0].equals(PARALLEL)) {
+							try {
+								forkAfter = Integer.parseInt(splitSolver[1]);
+							} catch (NumberFormatException e) {
+								printUsageAndExit();
+							}
+						} else if (splitSolver[0].equals(PARALLEL2)) {
+							sequential = 2;
+							try {
+								forkAfter = Integer.parseInt(splitSolver[1]);
+							} catch (NumberFormatException e) {
+								printUsageAndExit();
+							}
+						} else if (splitSolver[0].equals(PARALLEL3)) {
+							sequential = 3;
+							try {
+								forkAfter = Integer.parseInt(splitSolver[1]);
+							} catch (NumberFormatException e) {
+								printUsageAndExit();
+							}
+						} else if (splitSolver[0].equals(PARALLEL4)) {
+							sequential = 4;
+							try {
+								forkAfter = Integer.parseInt(splitSolver[1]);
+							} catch (NumberFormatException e) {
+								printUsageAndExit();
+							}
+						} else
+							printUsageAndExit();
+					} else
+						printUsageAndExit();
+				}
+				if (args.length >= 3) {
+					try {
+						poolSize = Integer.parseInt(args[2]);
+					} catch (NumberFormatException e) {
+						printUsageAndExit();
+					}
+				}
+				if (args.length >= 4) {
+					try {
+						period = Integer.parseInt(args[2]);
+					} catch (NumberFormatException e) {
+						printUsageAndExit();
+					}
+				}
+			}
+		} else
+			printUsageAndExit();
+	}
 
-    private static void parseArguments(String[] args)
-    {
-        if (args.length >= 1) {
-            map = args[0];
-            if (args.length >= 2) {
-                String solver = args[1];
-                if (solver.equals(SEQUENTIAL))
-                    sequential = 0;
-                else {
-                    sequential = 1;
-                    String[] splitSolver = solver.split("-");
-                    if (splitSolver.length == 2) {
-                        if (splitSolver[0].equals(PARALLEL)) {
-                            try {
-                                forkAfter = Integer.parseInt(splitSolver[1]);
-                            } catch (NumberFormatException e) {
-                                printUsageAndExit();
-                            }
-                        }else if(splitSolver[0].equals(PARALLEL2)) {
-                        	sequential = 2;
-                                try {
-                                    forkAfter = Integer.parseInt(splitSolver[1]);
-                                } catch (NumberFormatException e) {
-                                    printUsageAndExit();
-                                }
-                        } else
-                            printUsageAndExit();
-                    } else
-                        printUsageAndExit();
-                }
-                if (args.length >= 3) {
-                    try {
-                        period = Integer.parseInt(args[2]);
-                    } catch (NumberFormatException e) {
-                        printUsageAndExit();
-                    }
-                }
-            }
-        } else
-            printUsageAndExit();
-    }
-
-    public static void main(String[] args)
-    throws InterruptedException
-    {
-        parseArguments(args);
-        Amazed amazed = new Amazed(map, sequential, forkAfter, period);
-        long start = System.currentTimeMillis();
-        amazed.solve();
-        long stop = System.currentTimeMillis();
-        long elapsed = stop - start;
-        System.out.println("Solving time: " + elapsed + " ms");
-        Thread.sleep(1000);
-        amazed.showSolution();
-    }
+	public static void main(String[] args) throws InterruptedException {
+		parseArguments(args);
+		Amazed amazed = new Amazed(map, sequential, forkAfter, period);
+		long start = System.currentTimeMillis();
+		amazed.solve(poolSize);
+		long stop = System.currentTimeMillis();
+		long elapsed = stop - start;
+		System.out.println("Solving time: " + elapsed + " ms");
+		Thread.sleep(1000);
+		amazed.showSolution();
+	}
 }
